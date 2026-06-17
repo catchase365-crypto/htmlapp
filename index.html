@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="应用打包器">
+  <meta name="mobile-web-app-capable" content="yes">
+  
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='50' cy='50' r='50' fill='%236366f1'/%3E%3Ctext x='50%25' y='55%25' font-size='30' fill='white' font-family='sans-serif' text-anchor='middle' dominant-baseline='middle'%3EAPP%3C/text%3E%3C/svg%3E">
+  
+  <title>HTML 离线应用打包器</title>
+  
+  <style>
+    /* 采用极简、高级的暗黑极客风格，适合手机操作 */
+    body {
+      margin: 0;
+      padding: 20px;
+      background-color: #0f172a;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-col: column;
+      flex-direction: column;
+      gap: 15px;
+      height: 100vh;
+      box-sizing: border-box;
+    }
+    h2 { margin: 0; font-size: 18px; color: #818cf8; text-align: center; }
+    
+    /* 复制粘贴框 */
+    textarea {
+      width: 100%;
+      flex-grow: 1;
+      background-color: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 12px;
+      color: #f1f5f9;
+      font-family: monospace;
+      font-size: 14px;
+      resize: none;
+      box-sizing: border-box;
+      outline: none;
+    }
+    textarea:focus { border-color: #6366f1; }
+    
+    /* 文件选择器与按钮的美化 */
+    .file-input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #1e293b;
+      border: 2px dashed #475569;
+      border-radius: 12px;
+      padding: 15px;
+      cursor: pointer;
+      text-align: center;
+    }
+    .file-input-wrapper input[type="file"] {
+      position: absolute;
+      left: 0; top: 0; opacity: 0;
+      width: 100%; height: 100%;
+      cursor: pointer;
+    }
+    .file-label { font-size: 13px; color: #94a3b8; }
+    
+    /* 核心预览/打包按钮 */
+    .btn-pack {
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: transform 0.1s;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+    .btn-pack:active { transform: scale(0.98); }
+  </style>
+</head>
+<body>
+
+  <h2>📦 HTML 离线应用打包器</h2>
+
+  <div class="file-input-wrapper">
+    <span class="file-label" id="fileStatus">点击或拖拽导入 HTML 文件...</span>
+    <input type="file" id="htmlFileSelector" accept=".html,.htm,.txt">
+  </div>
+
+  <textarea id="htmlCodeArea" placeholder="或者直接在这里粘贴你的 HTML 代码..."></textarea>
+
+  <button class="btn-pack" onclick="generateAndPreview()">🚀 生成并预览独立应用</button>
+
+  <script>
+    const fileSelector = document.getElementById('htmlFileSelector');
+    const codeArea = document.getElementById('htmlCodeArea');
+    const fileStatus = document.getElementById('fileStatus');
+
+    // 处理文件导入读取
+    fileSelector.addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        codeArea.value = evt.target.result;
+        fileStatus.textContent = `已成功导入: ${file.name} ✅`;
+        fileStatus.style.color = '#34d399';
+      };
+      reader.readAsText(file);
+    });
+
+    // 核心打包算法：生成带有全屏 PWA 基因的永久 Data URL 并新开网页预览
+    function generateAndPreview() {
+      const userCode = codeArea.value.trim();
+      if (!userCode) {
+        alert('请先导入文件或粘贴代码！');
+        return;
+      }
+
+      // 智能检查：如果用户代码里没写全屏标签，我们在这里帮他自动注入，确保在桌面打开时绝对全屏
+      let finalCode = userCode;
+      if (!finalCode.includes('apple-mobile-web-app-capable')) {
+        const pwaTags = `
+          <meta name="apple-mobile-web-app-capable" content="yes">
+          <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+          <meta name="mobile-web-app-capable" content="yes">
+        `;
+        // 悄悄塞进用户代码的 <head> 里面
+        if (finalCode.includes('<head>')) {
+          finalCode = finalCode.replace('<head>', '<head>' + pwaTags);
+        } else if (finalCode.includes('<HEAD>')) {
+          finalCode = finalCode.replace('<HEAD>', '<HEAD>' + pwaTags);
+        }
+      }
+
+      // 核心跨越：利用 Base64 或 URL 编码，将全部代码压缩打包进一串永久网址中
+      // 使用 URL 编码可以保留完整的 HTML 语义，且完全支持系统的“添加到主屏幕”
+      const encodedUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(finalCode);
+
+      // 在 Chrome 或系统浏览器中新开网页打开这个“专属应用链接”
+      const newWindow = window.open(encodedUrl, '_blank');
+      
+      if (!newWindow) {
+        alert('弹窗被拦截，请允许本网页弹出新窗口！');
+      }
+    }
+  </script>
+</body>
+</html>
