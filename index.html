@@ -13,12 +13,12 @@
   <style>
     body {
       margin: 0; 
-      /* 使用苹果专属的安全区域填充，顶部和底部留出刘海与黑条的呼吸高度，但背景色完美一体化 */
+      /* 核心：Padding 加上苹果安全区域变量，让内容和背景色完美塞满状态栏和底部黑条 */
       padding: calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom)) 20px;
       background-color: #0b0f19; color: #f1f5f9;
       font-family: -apple-system, BlinkMacSystemFont, sans-serif;
       box-sizing: border-box;
-      /* 锁死整体不让它上下乱晃 */
+      /* 锁死高度，不让大本营在手机里上下乱晃 */
       height: 100vh;
       overflow: hidden;
     }
@@ -52,25 +52,32 @@
     }
     .app-name { font-size: 12px; color: #cbd5e1; font-weight: 500; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     
-    /* 删除小垃圾桶 */
-    .del-btn {
-      position: absolute; top: -5px; right: -5px;
-      width: 20px; height: 20px; background: #ef4444; border-radius: 50%;
-      font-size: 11px; display: flex; align-items: center; justify-content: center;
-      color: white; border: 2px solid #1e293b; font-weight: bold;
+    /* 按钮样式：删除和编辑 */
+    .del-btn, .edit-btn {
+      position: absolute; top: -5px; width: 22px; height: 22px; 
+      border-radius: 50%; font-size: 10px; display: flex; 
+      align-items: center; justify-content: center; color: white; 
+      border: 2px solid #1e293b; font-weight: bold; z-index: 10;
     }
+    .del-btn { right: -5px; background: #ef4444; }
+    .edit-btn { left: -5px; background: #3b82f6; }
+    
+    .btn-group {
+      display: flex; gap: 10px; margin-bottom: 20px;
+    }
+    .btn-group > * { flex: 1; margin-bottom: 0 !important; }
 
-    /* 【核心独立窗口层】利用 fixed 铺满绝对物理全屏，强制压榨底部安全区 */
+    /* 【核心独立窗口层】不用 height: 100vh，改成四周 0 绝对锁死，强行压榨全屏死角 */
     #previewContainer {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
       width: 100%; height: 100%;
-      background: #0b0f19; /* 变成和你大本营一样的暗色背景，即便加载慢也不会闪白眼 */
+      background: #0b0f19; /* 变成和大本营一样的深色，防止用户切换时闪白眼 */
       z-index: 99999; display: none;
     }
     #previewFrame { width: 100%; height: 100%; border: none; }
 
-    /* 【核心悬浮退出球】利用 env 自动避开所有苹果设备的刘海区域，动态对齐 */
+    /* 【核心悬浮退出球】利用 env() 自动长眼，避开不同 iPhone 的刘海区域 */
     #exitBall {
       position: fixed; 
       top: calc(15px + env(safe-area-inset-top)); 
@@ -84,22 +91,21 @@
       user-select: none; -webkit-user-select: none;
     }
   </style>
-
-<link rel="manifest" href="manifest.json">
-<script>
-if("service-worker" in navigator) navigator.serviceWorker.register("sw.js");
-window.addEventListener("click", function(){ var d=document.documentElement; (d.requestFullscreen||d.webkitRequestFullScreen).call(d); }, {once:true});
-</script>
 </head>
 <body>
 
   <h2>📦 我的离线应用大本营</h2>
   <div class="subtitle">在此无限导入HTML，打造属于你自己的桌面盒</div>
 
-  <label class="import-btn">
-    ➕ 导入新 HTML 文件到本地
-    <input type="file" id="installer" accept=".html,.htm" multiple style="display: none;">
-  </label>
+  <div class="btn-group">
+    <label class="import-btn">
+      📁 文件导入
+      <input type="file" id="installer" accept=".html,.htm" multiple style="display: none;">
+    </label>
+    <div class="import-btn" onclick="readClipboard()" style="background: linear-gradient(135deg, #10b981, #3b82f6);">
+      📋 剪贴板导入
+    </div>
+  </div>
 
   <div class="app-grid" id="appGrid"></div>
 
@@ -125,26 +131,42 @@ window.addEventListener("click", function(){ var d=document.documentElement; (d.
     };
     request.onsuccess = e => { db = e.target.result; renderList(); };
 
-    // 2. 监听文件导入，把代码存进本地地下室
-    installer.addEventListener('change', function(e) {
-      const files = Array.from(e.target.files);
-      let loaded = 0;
-
-      files.forEach(file => {
-        const reader = new FileReader();
-        reader.onload = function(evt) {
-          const transaction = db.transaction(["apps"], "readwrite");
-          transaction.objectStore("apps").add({
-            name: file.name.replace('.html','').replace('.htm',''),
-            code: evt.target.result,
-            icon: ["🎨","⏰","📅","🕹️","🎵","📝","🧮"][Math.floor(Math.random()*7)] // 随机塞个图标
-          });
-          loaded++;
-          if(loaded === files.length) { renderList(); }
-        };
-        reader.readAsText(file);
+    // 辅助：保存应用到DB
+    function saveApp(name, code) {
+      const transaction = db.transaction(["apps"], "readwrite");
+      transaction.objectStore("apps").add({
+        name: name || "未命名应用",
+        code: code,
+        icon: ["🎨","⏰","📅","🕹️","🎵","📝","🧮"][Math.floor(Math.random()*7)]
       });
+      transaction.oncomplete = () => renderList();
+    }
+
+    // 2. 监听文件导入
+    installer.addEventListener('change', async function(e) {
+      for (const file of Array.from(e.target.files)) {
+        const code = await file.text();
+        const defaultName = file.name.replace(/\.html?$/i, '');
+        const name = prompt(`请输入应用 "${defaultName}" 的名称:`, defaultName);
+        if (name !== null) saveApp(name, code);
+      }
+      this.value = '';
     });
+
+    // 剪贴板导入逻辑
+    async function readClipboard() {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text.includes('<html') || text.includes('<!DOCTYPE')) {
+          const name = prompt("检测到HTML代码，请输入应用名称:", "剪贴板应用");
+          if (name !== null) saveApp(name, text);
+        } else {
+          alert("剪贴板内容似乎不是有效的HTML代码");
+        }
+      } catch (err) {
+        alert("无法读取剪贴板，请确保已授权访问");
+      }
+    }
 
     // 3. 渲染本地已存好的 HTML 列表
     function renderList() {
@@ -156,6 +178,7 @@ window.addEventListener("click", function(){ var d=document.documentElement; (d.
           const card = document.createElement('div');
           card.className = 'app-card';
           card.innerHTML = `
+            <div class="edit-btn" onclick="renameApp(event, ${app.id}, '${app.name}')">✎</div>
             <div class="del-btn" onclick="deleteApp(event, ${app.id})">✕</div>
             <div class="app-icon">${app.icon}</div>
             <div class="app-name">${app.name}</div>
@@ -192,10 +215,25 @@ window.addEventListener("click", function(){ var d=document.documentElement; (d.
 
     // 6. 移除某个本地应用
     window.deleteApp = function(e, id) {
-      e.stopPropagation(); // 阻止触发打开
-      if(confirm("确定在本地卸载这个应用吗？")) {
+      e.stopPropagation();
+      if(confirm("⚠️ 确定要彻底删除这个应用吗？此操作不可撤销。")) {
         const transaction = db.transaction(["apps"], "readwrite");
         transaction.objectStore("apps").delete(id).onsuccess = () => renderList();
+      }
+    };
+
+    // 7. 重命名应用
+    window.renameApp = function(e, id, oldName) {
+      e.stopPropagation();
+      const newName = prompt("请输入新的应用名称:", oldName);
+      if (newName && newName !== oldName) {
+        const transaction = db.transaction(["apps"], "readwrite");
+        const store = transaction.objectStore("apps");
+        store.get(id).onsuccess = (ev) => {
+          const data = ev.target.result;
+          data.name = newName;
+          store.put(data).onsuccess = () => renderList();
+        };
       }
     };
   </script>
