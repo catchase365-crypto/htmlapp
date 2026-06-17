@@ -226,12 +226,15 @@
     window.renameApp = function(e, id, oldName) {
       e.stopPropagation();
       const newName = prompt("请输入新的应用名称:", oldName);
-      if (newName && newName !== oldName) {
+      const icons = ["🎨","⏰","📅","🕹️","🎵","📝","🧮","⚡","🚀","🌈"];
+      const newIcon = prompt("请输入新的应用表情符号 (直接确定则随机):", "");
+      if (newName !== null && (newName !== oldName || newIcon !== "")) {
         const transaction = db.transaction(["apps"], "readwrite");
         const store = transaction.objectStore("apps");
         store.get(id).onsuccess = (ev) => {
           const data = ev.target.result;
           data.name = newName;
+          if (newIcon && newIcon.length > 0) data.icon = newIcon;
           store.put(data).onsuccess = () => renderList();
         };
       }
